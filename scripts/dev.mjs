@@ -1,26 +1,32 @@
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
+import net from "node:net";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const portsConfigPath = path.join(scriptDir, "dev-ports.json");
 const portsConfig = readPortsConfig(portsConfigPath);
-const appPort = portsConfig.appPort;
-const wsPort = portsConfig.wsPort;
-const externalIp = readExternalIp([
-  path.resolve(scriptDir, "../../.ip"),
-  path.resolve(scriptDir, "../../.wsl_external_ip"),
-]);
+const requestedAppPort = portsConfig.appPort;
+const requestedWsPort = portsConfig.wsPort;
+const appPort = await resolveAvailablePort(requestedAppPort, "app");
+const wsPort = await resolveAvailablePort(
+  appPort === requestedWsPort ? requestedWsPort + 1 : requestedWsPort,
+  "websocket",
+);
+const externalIp = readExternalIp(path.resolve(scriptDir, "../../.ip"));
 const studentHost = externalIp || "localhost";
 const studentUrl = `http://${studentHost}:${appPort}/`;
+const childLogFilters = [/^\s*➜\s+Local:/, /^\s*➜\s+Network:/, /^\s*➜\s+press h \+ enter/i, /^\[server\] client url /];
 
-console.log("");
-console.log("===============================================");
-console.log(`[dev] STUDENTS: open this URL in browser`);
-console.log(`[dev] ${studentUrl}`);
-console.log("===============================================");
-console.log("");
+if (appPort !== requestedAppPort) {
+  console.log(`[dev] app port ${requestedAppPort} is busy, using ${appPort}`);
+}
+if (wsPort !== requestedWsPort) {
+  console.log(`[dev] websocket port ${requestedWsPort} is busy, using ${wsPort}`);
+}
+
+console.log(`[start] Open in browser: ${studentUrl}`);
 
 const processes = [
   {
@@ -52,13 +58,8 @@ const children = processes.map(({ name, cmd, args, env }) => {
     },
   });
 
-  child.stdout.on("data", (chunk) => {
-    process.stdout.write(`[${name}] ${chunk}`);
-  });
-
-  child.stderr.on("data", (chunk) => {
-    process.stderr.write(`[${name}] ${chunk}`);
-  });
+  child.stdout.on("data", createChildLogRelay(name, process.stdout));
+  child.stderr.on("data", createChildLogRelay(name, process.stderr));
 
   child.on("exit", (code) => {
     if (code !== 0) {
@@ -106,20 +107,65 @@ function toValidPort(value, name) {
   return parsed;
 }
 
-function readExternalIp(filePaths) {
-  for (const filePath of filePaths) {
-    if (!existsSync(filePath)) {
-      continue;
-    }
-    try {
-      const raw = readFileSync(filePath, "utf8");
-      const value = raw.split(/\r?\n/)[0]?.trim();
-      if (value) {
-        return value;
+function readExternalIp(filePath) {
+  if (!existsSync(filePath)) {
+    return null;
+  }
+
+  try {
+    const raw = readFileSync(filePath, "utf8");
+    const value = raw.split(/\r?\n/)[0]?.trim();
+    return value || null;
+  } catch {
+    return null;
+  }
+}
+
+function createChildLogRelay(name, target) {
+  let buffered = "";
+
+  return (chunk) => {
+    buffered += chunk.toString();
+    const lines = buffered.split(/\r?\n/);
+    buffered = lines.pop() ?? "";
+
+    for (const line of lines) {
+      if (shouldSkipChildLogLine(line)) {
+        continue;
       }
-    } catch {
-      // Ignore unreadable files and continue to the next fallback path.
+      target.write(`[${name}] ${line}\n`);
+    }
+  };
+}
+
+function shouldSkipChildLogLine(line) {
+  return childLogFilters.some((pattern) => pattern.test(line));
+}
+
+async function resolveAvailablePort(preferredPort, label) {
+  const maxAttempts = 20;
+  for (let offset = 0; offset < maxAttempts; offset += 1) {
+    const candidatePort = preferredPort + offset;
+    // Bind to test whether the dev port is available before spawning processes.
+    if (await canListenOnPort(candidatePort)) {
+      return candidatePort;
     }
   }
-  return null;
+
+  console.error(`[dev] unable to find an open ${label} port starting at ${preferredPort}`);
+  process.exit(1);
+}
+
+function canListenOnPort(port) {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+
+    server.once("error", () => {
+      resolve(false);
+    });
+
+    server.listen(port, "0.0.0.0", () => {
+      server.close(() => resolve(true));
+    });
+  });
 }

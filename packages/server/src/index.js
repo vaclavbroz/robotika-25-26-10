@@ -489,7 +489,7 @@ function resolveClientHostForStartupUrl() {
 
 function readExternalIpFromSetupFile() {
   const scriptDir = path.dirname(fileURLToPath(import.meta.url));
-  const defaultPath = path.resolve(scriptDir, "../../../../setup/.wsl_external_ip");
+  const defaultPath = path.resolve(scriptDir, "../../../../.ip");
   const configuredPath = process.env.EXTERNAL_IP_FILE || defaultPath;
 
   if (!existsSync(configuredPath)) {
