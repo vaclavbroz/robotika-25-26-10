@@ -24,7 +24,7 @@ const INPUT_BUTTON_BACKWARD = 1 << 2;
 const INPUT_BUTTON_LEFT = 1 << 3;
 const INPUT_BUTTON_RIGHT = 1 << 4;
 const DEBUG_NET = new URLSearchParams(window.location.search).get("debugNet") === "1";
-const WS_PORT = parsePort(import.meta.env.VITE_WS_PORT, 8010);
+const WS_PORT = parsePort(import.meta.env.VITE_WS_PORT, 9000);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87c9ff);

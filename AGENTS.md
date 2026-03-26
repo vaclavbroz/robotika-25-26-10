@@ -27,4 +27,4 @@
 - Current limitation:
   - Opening the browser client alone does not yet connect to server WebSocket.
 - To verify server connect/disconnect logs manually while stack is up, use:
-  - `node -e 'const ws=new WebSocket("ws://127.0.0.1:8010");ws.onmessage=(e)=>{console.log(e.data);setTimeout(()=>ws.close(),1000);};'`
+  - `node -e 'const ws=new WebSocket("ws://127.0.0.1:9000");ws.onmessage=(e)=>{console.log(e.data);setTimeout(()=>ws.close(),1000);};'`

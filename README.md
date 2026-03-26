@@ -13,6 +13,15 @@ This runs `npm run dev` and starts:
 - client (`packages/client`)
 - server (`packages/server`)
 
+Interactive controls while it is running:
+
+- `r`: restart client and server
+- `q`: stop client and server and exit
+- `h`: print the controls again
+- `Ctrl+C`: does not stop the stack, it prints the controls instead
+
+If the configured dev ports are already occupied, the launcher stops the process holding them and continues startup/restart automatically.
+
 You should see prefixed logs in the same terminal:
 
 - `[client]` Vite startup and URL (default `http://localhost:8000/`)
@@ -20,16 +29,12 @@ You should see prefixed logs in the same terminal:
 
 ## Dev Ports Configuration
 
-Ports are configured in:
-
-```bash
-scripts/dev-ports.json
-```
+Ports are derived from the team folder name.
 
 Defaults:
 
 - app/client: `8000`
-- websocket server: `8010`
+- websocket server: `9000`
 
 ## Verify Server Connect/Disconnect Logs
 
@@ -38,7 +43,7 @@ Open the client URL shown in `[client]` logs (default `http://localhost:8000/`) 
 You can also use this temporary smoke client in another terminal while stack is running:
 
 ```bash
-node -e 'const ws=new WebSocket("ws://127.0.0.1:8010");ws.onmessage=(e)=>{console.log(e.data);setTimeout(()=>ws.close(),1000);};'
+node -e 'const ws=new WebSocket("ws://127.0.0.1:9000");ws.onmessage=(e)=>{console.log(e.data);setTimeout(()=>ws.close(),1000);};'
 ```
 
 Expected server logs:
