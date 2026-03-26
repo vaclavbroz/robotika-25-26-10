@@ -1,44 +1,13 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>3D Terrain Walker</title>
-    <link rel="stylesheet" href="/src/style.css" />
-  </head>
-  <body>
-    <div id="hud">
-      <div id="crosshair">+</div>
-      <div id="dev-overlay" hidden>
-        <div id="dev-overlay-panel">
-          <h2 id="dev-overlay-title">Updating</h2>
-          <p id="dev-overlay-text">Changes are being applied.</p>
-        </div>
-      </div>
-      <div id="help">
-        <h1 id="help-title">Click to Play</h1>
-        <div id="connect-panel">
-          <label for="nick-input">Nickname</label>
-          <div id="connect-row">
-            <input id="nick-input" type="text" maxlength="20" placeholder="pilot" />
-            <button id="connect-btn" type="button">Connect</button>
-          </div>
-          <div id="avatar-row">
-            <label for="color-input">Color</label>
-            <input id="color-input" type="color" value="#3c74d4" />
-            <label for="pattern-select">Pattern</label>
-            <select id="pattern-select">
-              <option value="stripes">Stripes</option>
-              <option value="checker">Checker</option>
-            </select>
-            <div id="avatar-preview" aria-hidden="true">
-              <canvas id="avatar-preview-canvas" width="72" height="72"></canvas>
-            </div>
-          </div>
-        </div>
-        <p id="help-text">WASD to move, SPACE to jump, mouse to look around.</p>
-      </div>
-    </div>
-    <script type="module" src="/src/main.js"></script>
-  </body>
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>3D Skákačka</title>
+  <style>
+    body { margin: 0; overflow: hidden; }
+  </style>
+</head>
+<body>
+  <script type="module" src="game.js"></script>
+</body>
 </html>

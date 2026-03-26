@@ -10,12 +10,17 @@ export default defineConfig({
 function debouncedClientReloadPlugin() {
   let reloadTimer = null;
   let lastAnnouncementAtMs = 0;
+  const clientRoot = `${path.sep}packages${path.sep}client${path.sep}`;
 
   return {
     name: "debounced-client-reload",
     handleHotUpdate(context) {
       const isClientSource =
-        context.file.includes(`${path.sep}src${path.sep}`) || context.file.endsWith(`${path.sep}index.html`);
+        context.file.includes(`${path.sep}src${path.sep}`) ||
+        context.file.endsWith(`${path.sep}index.html`) ||
+        (context.file.includes(clientRoot) &&
+          !context.file.includes(`${path.sep}node_modules${path.sep}`) &&
+          !context.file.endsWith(`${path.sep}vite.config.js`));
       if (!isClientSource) {
         return;
       }
