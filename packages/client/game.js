@@ -53,6 +53,7 @@ const playerMaterial = new THREE.MeshStandardMaterial({
 const player = new THREE.Mesh(playerGeometry, playerMaterial);
 player.position.y = 2;
 scene.add(player);
+ window.player = player;
 
 // ===== NEPŘÍTEL =====
 const enemyGeometry = new THREE.BoxGeometry(1, 2, 1);
@@ -109,15 +110,91 @@ const worldState = {
   ruinSectors: new Map(),
   libraryTrigger: null,
 };
+const BOOK_LINE_A = "Vedle tebe";
+const BOOK_LINE_B = "je nepřítel.";
+const BOOK_TEXT = `${BOOK_LINE_A}\n${BOOK_LINE_B}`;
+const bookInteractables = [];
 const playerForward = new THREE.Vector3();
 const playerRight = new THREE.Vector3();
 const cameraTarget = new THREE.Vector3();
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
 const moveState = {
   forward: false,
   backward: false,
   left: false,
   right: false,
 };
+
+function resetMoveState() {
+  moveState.forward = false;
+  moveState.backward = false;
+  moveState.left = false;
+  moveState.right = false;
+}
+
+const bookOverlay = document.createElement("div");
+bookOverlay.style.position = "fixed";
+bookOverlay.style.inset = "0";
+bookOverlay.style.display = "none";
+bookOverlay.style.alignItems = "center";
+bookOverlay.style.justifyContent = "center";
+bookOverlay.style.padding = "6vw";
+bookOverlay.style.background = "rgba(12, 8, 5, 0.94)";
+bookOverlay.style.color = "#f4ecdb";
+bookOverlay.style.fontFamily = "Georgia, serif";
+bookOverlay.style.fontSize = "clamp(28px, 4vw, 56px)";
+bookOverlay.style.lineHeight = "1.35";
+bookOverlay.style.textAlign = "center";
+bookOverlay.style.whiteSpace = "pre-line";
+bookOverlay.style.zIndex = "20";
+bookOverlay.style.cursor = "pointer";
+
+const bookOverlayText = document.createElement("div");
+bookOverlayText.style.maxWidth = "980px";
+bookOverlayText.style.textShadow = "0 2px 18px rgba(0, 0, 0, 0.45)";
+bookOverlay.appendChild(bookOverlayText);
+document.body.appendChild(bookOverlay);
+
+function openBookOverlay(text) {
+  resetMoveState();
+  bookOverlayText.textContent = text;
+  bookOverlay.style.display = "flex";
+  if (document.pointerLockElement === renderer.domElement) {
+    document.exitPointerLock();
+  }
+}
+
+function spawnLibraryEnemyNearPlayer() {
+  libraryEnemy.visible = true;
+  libraryEnemy.position.set(
+    player.position.x + playerRight.x * 2.8 + playerForward.x * 0.8,
+    player.position.y,
+    player.position.z + playerRight.z * 2.8 + playerForward.z * 0.8,
+  );
+
+  if (worldState.libraryTrigger) {
+    worldState.libraryTrigger.activated = true;
+  }
+}
+
+function closeBookOverlay() {
+  const wasOpen = isBookOverlayOpen();
+  resetMoveState();
+  bookOverlay.style.display = "none";
+  if (wasOpen) {
+    spawnLibraryEnemyNearPlayer();
+  }
+}
+
+function isBookOverlayOpen() {
+  return bookOverlay.style.display !== "none";
+}
+
+bookOverlay.addEventListener("mousedown", (event) => {
+  event.stopPropagation();
+  closeBookOverlay();
+});
 
 // PLATFORMY
 const platforms = [];
@@ -232,7 +309,7 @@ function createLibrary(x, z) {
   const baseY = 28;
   const floorLift = 0.03;
   const wallThickness = 0.4;
-  const doorWidth = 3.2;
+  const doorWidth = 4.4;
   const doorHeight = 3.8;
   const frontWallWidth = (width - doorWidth) / 2;
   const upperWallHeight = height - doorHeight;
@@ -301,16 +378,19 @@ function createLibrary(x, z) {
   frameTop.position.set(x, baseY + doorHeight, z + depth / 2 - wallThickness / 2);
   scene.add(frameTop);
 
-  const door = new THREE.Mesh(
-    new THREE.BoxGeometry(doorWidth * 0.48, doorHeight * 0.9, wallThickness * 0.24),
-    doorMaterial,
-  );
-  door.position.set(x - doorWidth * 0.22, baseY + doorHeight * 0.45, z + depth / 2 - wallThickness);
-  door.rotation.y = Math.PI / 3.8;
-  scene.add(door);
+  const doorGeometry = new THREE.BoxGeometry(doorWidth * 0.3, doorHeight * 0.9, wallThickness * 0.24);
+  const leftDoor = new THREE.Mesh(doorGeometry, doorMaterial);
+  leftDoor.position.set(x - doorWidth * 0.38, baseY + doorHeight * 0.45, z + depth / 2 - wallThickness);
+  leftDoor.rotation.y = Math.PI / 2.9;
+  scene.add(leftDoor);
+
+  const rightDoor = new THREE.Mesh(doorGeometry, doorMaterial);
+  rightDoor.position.set(x + doorWidth * 0.38, baseY + doorHeight * 0.45, z + depth / 2 - wallThickness);
+  rightDoor.rotation.y = -Math.PI / 2.9;
+  scene.add(rightDoor);
 
   const columnGeometry = new THREE.BoxGeometry(0.55, height - 0.2, 0.55);
-  for (const offset of [-3.3, -1.1, 1.1, 3.3]) {
+  for (const offset of [-3.8, -2.15, 2.15, 3.8]) {
     const column = new THREE.Mesh(columnGeometry, trimMaterial);
     column.position.set(x + offset, baseY + (height - 0.2) / 2, z + depth / 2 + 0.25);
     scene.add(column);
@@ -365,12 +445,12 @@ function createLibrary(x, z) {
     new THREE.BoxGeometry(1.6, 0.8, 1.1),
     new THREE.MeshStandardMaterial({ color: 0x5e544c, roughness: 0.96 }),
   );
-  pedestal.position.set(x, baseY + 0.4, z - 1.2);
+  pedestal.position.set(x - 2.2, baseY + 0.4, z - 1.8);
   scene.add(pedestal);
 
   const leftPageMaterial = new THREE.MeshStandardMaterial({
     color: 0xffffff,
-    map: createBookPageTexture("Vedle tebe", "je nepritel."),
+    map: createBlankBookPageTexture(),
     roughness: 0.84,
   });
   const rightPageMaterial = new THREE.MeshStandardMaterial({ color: 0xf2eadb, roughness: 0.84 });
@@ -378,19 +458,25 @@ function createLibrary(x, z) {
     new THREE.BoxGeometry(0.9, 0.06, 0.7),
     leftPageMaterial,
   );
-  leftPage.position.set(x - 0.38, baseY + 0.88, z - 1.2);
+  leftPage.position.set(x - 2.58, baseY + 0.88, z - 1.8);
   leftPage.rotation.z = 0.16;
   leftPage.rotation.y = 0.2;
+  leftPage.userData.bookText = BOOK_TEXT;
   scene.add(leftPage);
+  bookInteractables.push(leftPage);
 
   const rightPage = new THREE.Mesh(
     new THREE.BoxGeometry(0.9, 0.06, 0.7),
     rightPageMaterial,
   );
-  rightPage.position.set(x + 0.38, baseY + 0.88, z - 1.2);
+  rightPage.position.set(x - 1.82, baseY + 0.88, z - 1.8);
   rightPage.rotation.z = -0.16;
   rightPage.rotation.y = -0.2;
+  rightPage.userData.bookText = BOOK_TEXT;
   scene.add(rightPage);
+  bookInteractables.push(rightPage);
+
+  createLibraryClutter(x, z, baseY);
 
   worldState.libraryTrigger = {
     x,
@@ -443,6 +529,138 @@ function createBookPageTexture(lineA, lineB) {
   const texture = new THREE.CanvasTexture(canvas);
   texture.needsUpdate = true;
   return texture;
+}
+
+function createBlankBookPageTexture() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1024;
+  canvas.height = 1024;
+  const context = canvas.getContext("2d");
+
+  context.fillStyle = "#f2eadb";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = "#6d5d47";
+  context.fillRect(30, 30, canvas.width - 60, canvas.height - 60);
+  context.fillStyle = "#f7f0e2";
+  context.fillRect(46, 46, canvas.width - 92, canvas.height - 92);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.needsUpdate = true;
+  return texture;
+}
+
+function createBloodStainTexture(seed = 0) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 512;
+  const context = canvas.getContext("2d");
+
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.translate(canvas.width / 2, canvas.height / 2);
+
+  const splatCount = 10 + (seed % 5);
+  for (let i = 0; i < splatCount; i++) {
+    const angle = ((seed * 31 + i * 47) % 360) * (Math.PI / 180);
+    const radius = 20 + ((seed + i * 13) % 140);
+    const x = Math.cos(angle) * radius * 0.72;
+    const y = Math.sin(angle) * radius * 0.52;
+    const blobRadius = 24 + ((seed + i * 11) % 42);
+
+    context.beginPath();
+    context.fillStyle = i % 3 === 0 ? "rgba(65, 0, 0, 0.9)" : "rgba(110, 0, 0, 0.82)";
+    context.arc(x, y, blobRadius, 0, Math.PI * 2);
+    context.fill();
+  }
+
+  context.beginPath();
+  context.fillStyle = "rgba(120, 0, 0, 0.86)";
+  context.ellipse(0, 0, 140, 90, ((seed % 7) - 3) * 0.18, 0, Math.PI * 2);
+  context.fill();
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.needsUpdate = true;
+  return texture;
+}
+
+function createLibraryClutter(x, z, baseY) {
+  const coverMaterials = [
+    new THREE.MeshStandardMaterial({ color: 0x4c1f1f, roughness: 0.95 }),
+    new THREE.MeshStandardMaterial({ color: 0x2f3f5a, roughness: 0.92 }),
+    new THREE.MeshStandardMaterial({ color: 0x5a4824, roughness: 0.96 }),
+    new THREE.MeshStandardMaterial({ color: 0x3f332d, roughness: 0.95 }),
+  ];
+  const pageMaterial = new THREE.MeshStandardMaterial({ color: 0xd9cfb8, roughness: 1 });
+  const bloodMaterialA = new THREE.MeshStandardMaterial({
+    color: 0x6d0505,
+    map: createBloodStainTexture(3),
+    transparent: true,
+    roughness: 1,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
+  });
+  const bloodMaterialB = new THREE.MeshStandardMaterial({
+    color: 0x4a0000,
+    map: createBloodStainTexture(11),
+    transparent: true,
+    roughness: 1,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
+  });
+
+  const bookSpecs = [
+    { x: -3.1, z: -2.3, y: 0.18, rotY: 0.9, rotZ: 1.36, scale: 1.05, cover: 0 },
+    { x: -1.1, z: -0.9, y: 0.08, rotY: -0.55, rotZ: 1.57, scale: 0.92, cover: 1 },
+    { x: 0.8, z: -2.6, y: 0.09, rotY: 0.24, rotZ: 1.57, scale: 1.1, cover: 2 },
+    { x: 2.6, z: -1.6, y: 0.12, rotY: -1.1, rotZ: 1.42, scale: 0.98, cover: 3 },
+    { x: 1.9, z: 0.9, y: 0.07, rotY: 0.62, rotZ: 1.57, scale: 0.86, cover: 0 },
+    { x: -2.4, z: 1.1, y: 0.11, rotY: -0.28, rotZ: 1.49, scale: 1.02, cover: 2 },
+  ];
+
+  for (const spec of bookSpecs) {
+    const book = new THREE.Group();
+
+    const body = new THREE.Mesh(
+      new THREE.BoxGeometry(0.95 * spec.scale, 0.14 * spec.scale, 0.68 * spec.scale),
+      coverMaterials[spec.cover],
+    );
+    body.castShadow = true;
+    body.receiveShadow = true;
+    book.add(body);
+
+    const pages = new THREE.Mesh(
+      new THREE.BoxGeometry(0.84 * spec.scale, 0.09 * spec.scale, 0.58 * spec.scale),
+      pageMaterial,
+    );
+    pages.position.y = 0.02;
+    book.add(pages);
+
+    book.position.set(x + spec.x, baseY + spec.y, z + spec.z);
+    book.rotation.y = spec.rotY;
+    book.rotation.z = spec.rotZ;
+    scene.add(book);
+  }
+
+  const stainA = new THREE.Mesh(new THREE.PlaneGeometry(3.8, 2.4), bloodMaterialA);
+  stainA.rotation.x = -Math.PI / 2;
+  stainA.rotation.z = 0.35;
+  stainA.position.set(x - 1.1, baseY + 0.03, z - 1.1);
+  scene.add(stainA);
+
+  const stainB = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 1.5), bloodMaterialB);
+  stainB.rotation.x = -Math.PI / 2;
+  stainB.rotation.z = -0.6;
+  stainB.position.set(x + 1.95, baseY + 0.031, z - 2.2);
+  scene.add(stainB);
+
+  const stainC = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.1), bloodMaterialB);
+  stainC.rotation.x = -Math.PI / 2;
+  stainC.rotation.z = 0.12;
+  stainC.position.set(x - 2.25, baseY + 0.032, z - 1.8);
+  scene.add(stainC);
 }
 
 function createRubblePatch(x, z, seed, parent = scene) {
@@ -582,11 +800,19 @@ function shouldCreateLibrary(column, row) {
   return (column === 1 && row === 3) || (column === 3 && row === 1) || (column === 4 && row === 4);
 }
 
+function shouldLeaveVillagePath(column) {
+  return column === 2;
+}
+
 function createBuildingDistrict() {
   for (let column = 0; column < 5; column++) {
     for (let row = 0; row < 5; row++) {
       const x = column * 12;
       const z = -72 - row * 12;
+
+      if (shouldLeaveVillagePath(column)) {
+        continue;
+      }
 
       if (shouldCreateLibrary(column, row)) {
         createLibrary(x, z);
@@ -599,15 +825,31 @@ function createBuildingDistrict() {
 }
 
 // velká zem
-  const bigGroundGeometry = new THREE.BoxGeometry(200, 2, 200);
+  const INFINITE_VILLAGE_GROUND_DEPTH = 10000;
+  const villageGroundFrontEdgeZ = -64;
+  const bigGroundGeometry = new THREE.BoxGeometry(84, 2, INFINITE_VILLAGE_GROUND_DEPTH);
   const bigGroundMaterial = new THREE.MeshStandardMaterial({ color: 0x222222 });
 
   const bigGround = new THREE.Mesh(bigGroundGeometry, bigGroundMaterial);
-  bigGround.position.set(0, 27, -170);
+  bigGround.position.set(24, 27, villageGroundFrontEdgeZ - INFINITE_VILLAGE_GROUND_DEPTH / 2);
   scene.add(bigGround);
+
+  const villageApproachGeometry = new THREE.BoxGeometry(36, 2, 14);
+  const villageApproach = new THREE.Mesh(villageApproachGeometry, bigGroundMaterial);
+  villageApproach.position.set(12, 27, -75);
+  scene.add(villageApproach);
 
 // OVLÁDÁNÍ
 document.addEventListener("keydown", (event) => {
+  if (event.code === "Escape" && isBookOverlayOpen()) {
+    closeBookOverlay();
+    return;
+  }
+
+  if (isBookOverlayOpen()) {
+    return;
+  }
+
   if (event.code === "F5") {
     event.preventDefault();
     cameraModeIndex = (cameraModeIndex + 1) % 3;
@@ -626,6 +868,10 @@ document.addEventListener("keydown", (event) => {
 });
 
 document.addEventListener("keyup", (event) => {
+  if (isBookOverlayOpen()) {
+    return;
+  }
+
   if (
     event.code === "ArrowLeft" ||
     event.code === "ArrowRight" ||
@@ -652,7 +898,41 @@ let angle = 0;
 let pitch = 0.3;
 const distance = 8;
 
+function tryOpenBookFromClick(event) {
+  if (bookInteractables.length === 0) {
+    return false;
+  }
+
+  if (document.pointerLockElement === renderer.domElement) {
+    pointer.set(0, 0);
+  } else {
+    pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
+    pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
+  }
+
+  raycaster.setFromCamera(pointer, camera);
+  const hit = raycaster.intersectObjects(bookInteractables, false)[0];
+  if (!hit) {
+    return false;
+  }
+
+  if (hit.object.position.distanceTo(player.position) > 4.2) {
+    return false;
+  }
+
+  openBookOverlay(hit.object.userData.bookText ?? "");
+  return true;
+}
+
 document.addEventListener("mousedown", (event) => {
+  if (isBookOverlayOpen()) {
+    return;
+  }
+
+  if (event.button === 0 && tryOpenBookFromClick(event)) {
+    return;
+  }
+
   if (document.pointerLockElement !== renderer.domElement) {
     renderer.domElement.requestPointerLock();
   }
@@ -664,6 +944,7 @@ document.addEventListener("mousedown", (event) => {
 });
 
 document.addEventListener("mousemove", (event) => {
+  if (isBookOverlayOpen()) return;
   if (document.pointerLockElement !== renderer.domElement) return;
 
   angle -= event.movementX * 0.005;
@@ -891,6 +1172,7 @@ function animate() {
 // platformy
 platforms.push(ground);
 platforms.push(bigGround);
+platforms.push(villageApproach);
 createPlatform(0, 2, -5, 4, 0.5, 4);
 createPlatform(5, 4, -10, 4, 0.5, 4);
 createPlatform(-2, 6, -15, 4, 0.5, 4);
