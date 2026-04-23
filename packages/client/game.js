@@ -110,6 +110,16 @@ const worldState = {
   ruinSectors: new Map(),
   libraryTrigger: null,
 };
+const beerInteractables = [];
+const DRINK_PLUS_PER_DRINK = 5;
+const DRUNK_GAIN_PER_DRINK = 1.25;
+const DRUNK_DECAY_PER_SECOND = 0.25;
+const DRUNK_DEATH_THRESHOLD = 6.2;
+const DRUNK_HIT_RADIUS = 4.2;
+const TAVERN_BARREL_FALLBACK = new THREE.Vector3(-1.85, 28.47, -95.85);
+const TAVERN_BARREL_FALLBACK_RADIUS = 4.4;
+let drunkLevel = 0;
+let lastFrameTime = performance.now();
 const BOOK_LINE_A = "Vedle tebe";
 const BOOK_LINE_B = "je nepřítel.";
 const BOOK_TEXT = `${BOOK_LINE_A}\n${BOOK_LINE_B}`;
@@ -156,6 +166,14 @@ bookOverlayText.style.textShadow = "0 2px 18px rgba(0, 0, 0, 0.45)";
 bookOverlay.appendChild(bookOverlayText);
 document.body.appendChild(bookOverlay);
 
+const drunkOverlay = document.createElement("div");
+drunkOverlay.style.position = "fixed";
+drunkOverlay.style.inset = "0";
+drunkOverlay.style.pointerEvents = "none";
+drunkOverlay.style.zIndex = "9999";
+drunkOverlay.style.overflow = "hidden";
+document.body.appendChild(drunkOverlay);
+
 function openBookOverlay(text) {
   resetMoveState();
   bookOverlayText.textContent = text;
@@ -189,6 +207,137 @@ function closeBookOverlay() {
 
 function isBookOverlayOpen() {
   return bookOverlay.style.display !== "none";
+}
+
+function isBeerWithinReach(object) {
+  const dx = object.position.x - player.position.x;
+  const dz = object.position.z - player.position.z;
+  const dy = object.position.y - player.position.y;
+  const horizontalDistance = Math.hypot(dx, dz);
+  return horizontalDistance <= DRUNK_HIT_RADIUS && Math.abs(dy) <= DRUNK_HIT_RADIUS;
+}
+
+function getNearestBeerDistance() {
+  const nearby = findNearbyBeer();
+  if (nearby) {
+    return nearby.position.distanceTo(player.position);
+  }
+
+  const fallbackDistance = player.position.distanceTo(TAVERN_BARREL_FALLBACK);
+  if (fallbackDistance <= TAVERN_BARREL_FALLBACK_RADIUS) {
+    return fallbackDistance;
+  }
+
+  return null;
+}
+
+function ensureBeerInteractables() {
+  if (beerInteractables.length > 0) {
+    return;
+  }
+
+  scene.traverse((object) => {
+    if (object?.userData?.interactionType === "beer" && !beerInteractables.includes(object)) {
+      beerInteractables.push(object);
+    }
+  });
+}
+
+function findNearbyBeer() {
+  ensureBeerInteractables();
+
+  if (beerInteractables.length === 0) {
+    return null;
+  }
+
+  let best = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+
+  for (const beer of beerInteractables) {
+    const distance = beer.position.distanceTo(player.position);
+    if (distance <= DRUNK_HIT_RADIUS && distance < bestDistance) {
+      best = beer;
+      bestDistance = distance;
+    }
+  }
+
+  return best;
+}
+
+function spawnDrinkPlus() {
+  for (let i = 0; i < DRINK_PLUS_PER_DRINK; i++) {
+    const plus = document.createElement("div");
+    plus.textContent = "+";
+    plus.style.position = "fixed";
+    plus.style.left = `${50 + (Math.random() * 30 - 15)}%`;
+    plus.style.top = `${50 + (Math.random() * 30 - 15)}%`;
+    plus.style.color = "#00ff66";
+    plus.style.fontWeight = "700";
+    plus.style.fontFamily = "Arial Black, system-ui, sans-serif";
+    plus.style.fontSize = `${28 + Math.random() * 22}px`;
+    plus.style.opacity = "1";
+    plus.style.transform = "translate(-50%, -50%) scale(0.8)";
+    plus.style.transition = "transform 0.95s ease-out, opacity 0.95s ease-out";
+    plus.style.color = "#00ff66";
+    plus.style.textShadow = "0 0 14px rgba(0,255,102,0.95)";
+    drunkOverlay.appendChild(plus);
+
+    requestAnimationFrame(() => {
+      plus.style.opacity = "0";
+      plus.style.transform = "translate(-50%, -180%) scale(1.4)";
+    });
+
+    setTimeout(() => {
+      plus.remove();
+    }, 1000);
+  }
+}
+
+function respawnFromDrunkness() {
+  drunkLevel = 0;
+  enemySpeed = 0.02;
+  player.position.set(0, 1, 0);
+  velocityY = 0;
+  isOnGround = true;
+  enemy.position.set(0, 1, -50);
+  libraryEnemy.visible = false;
+  if (worldState.libraryTrigger) {
+    worldState.libraryTrigger.activated = false;
+  }
+}
+
+function drinkFromBeer() {
+  const before = drunkLevel;
+  drunkLevel = Math.min(DRUNK_DEATH_THRESHOLD + 0.8, drunkLevel + DRUNK_GAIN_PER_DRINK);
+  spawnDrinkPlus();
+
+  if (drunkLevel < DRUNK_DEATH_THRESHOLD && before < DRUNK_DEATH_THRESHOLD) {
+    return;
+  }
+
+  if (drunkLevel >= DRUNK_DEATH_THRESHOLD) {
+    respawnFromDrunkness();
+  }
+}
+
+if (typeof window !== "undefined") {
+  window.__tavernBeerDebug = {
+    drink: drinkFromBeer,
+    teleportToBar: () => player.position.set(-1.85, 28.5, -95.85),
+    getDrunkLevel: () => drunkLevel,
+    getBeerDistance: () => {
+      return getNearestBeerDistance();
+    },
+    getBeerDebug: () => {
+      ensureBeerInteractables();
+      return {
+        count: beerInteractables.length,
+        distance: getNearestBeerDistance(),
+        nearFallback:
+          player.position.distanceTo(TAVERN_BARREL_FALLBACK) <= TAVERN_BARREL_FALLBACK_RADIUS,
+      };
+    },
+  };
 }
 
 bookOverlay.addEventListener("mousedown", (event) => {
@@ -485,6 +634,205 @@ function createLibrary(x, z) {
   };
 }
 
+function createTavern(x, z) {
+  const width = 10.8;
+  const height = 5.2;
+  const depth = 7.2;
+  const baseY = 28;
+  const floorLift = 0.03;
+  const wallThickness = 0.45;
+  const doorWidth = 2.7;
+  const doorHeight = 3.3;
+  const frontWallWidth = (width - doorWidth) / 2;
+  const upperWallHeight = Math.max(0.8, height - doorHeight);
+
+  const wallMaterial = new THREE.MeshStandardMaterial({ color: 0x7b5333, roughness: 0.9 });
+  const trimMaterial = new THREE.MeshStandardMaterial({ color: 0x3c2417, roughness: 0.88 });
+  const roofMaterial = new THREE.MeshStandardMaterial({ color: 0x772525, roughness: 0.72 });
+  const windowMaterial = new THREE.MeshStandardMaterial({
+    color: 0xa6d8ff,
+    emissive: 0x3d5668,
+    roughness: 0.34,
+    metalness: 0.1,
+  });
+  const doorMaterial = new THREE.MeshStandardMaterial({ color: 0x3f1c0d, roughness: 0.9 });
+
+  createPlatform(
+    x,
+    baseY + floorLift - wallThickness / 2,
+    z,
+    width + 0.2,
+    wallThickness,
+    depth + 0.2,
+  );
+  createPlatform(
+    x - width / 2 + wallThickness / 2,
+    baseY + height / 2,
+    z,
+    wallThickness,
+    height,
+    depth,
+  );
+  createPlatform(
+    x + width / 2 - wallThickness / 2,
+    baseY + height / 2,
+    z,
+    wallThickness,
+    height,
+    depth,
+  );
+  createPlatform(
+    x,
+    baseY + height / 2,
+    z - depth / 2 + wallThickness / 2,
+    width,
+    height,
+    wallThickness,
+  );
+  createPlatform(
+    x - doorWidth / 2 - frontWallWidth / 2,
+    baseY + height / 2,
+    z + depth / 2 - wallThickness / 2,
+    frontWallWidth,
+    height,
+    wallThickness,
+  );
+  createPlatform(
+    x + doorWidth / 2 + frontWallWidth / 2,
+    baseY + height / 2,
+    z + depth / 2 - wallThickness / 2,
+    frontWallWidth,
+    height,
+    wallThickness,
+  );
+  createPlatform(
+    x,
+    baseY + doorHeight + upperWallHeight / 2,
+    z + depth / 2 - wallThickness / 2,
+    doorWidth,
+    upperWallHeight,
+    wallThickness,
+  );
+
+  const sideWindowOffset = 1.25;
+  const sideWindowGeometry = new THREE.BoxGeometry(1.35, 1.2, 0.12);
+  const sideWindowLeft = new THREE.Mesh(sideWindowGeometry, windowMaterial);
+  sideWindowLeft.position.set(x - width / 2 + sideWindowOffset, baseY + 3.0, z + 0.65);
+  scene.add(sideWindowLeft);
+
+  const sideWindowRight = new THREE.Mesh(sideWindowGeometry, windowMaterial);
+  sideWindowRight.position.set(x + width / 2 - sideWindowOffset, baseY + 3.0, z + 0.65);
+  scene.add(sideWindowRight);
+
+  const door = new THREE.Mesh(
+    new THREE.BoxGeometry(doorWidth * 0.85, doorHeight * 0.9, wallThickness * 0.26),
+    doorMaterial,
+  );
+  door.position.set(x + 0.25, baseY + doorHeight * 0.45, z + depth / 2 - wallThickness * 0.5);
+  door.rotation.y = Math.PI / 2.8;
+  scene.add(door);
+
+  const frontFrame = new THREE.Mesh(
+    new THREE.BoxGeometry(doorWidth + 0.25, wallThickness, wallThickness * 1.35),
+    trimMaterial,
+  );
+  frontFrame.position.set(x, baseY + doorHeight + 0.18, z + depth / 2 - wallThickness * 0.6);
+  scene.add(frontFrame);
+
+  const frameSide = new THREE.BoxGeometry(wallThickness, doorHeight, wallThickness * 1.4);
+  const leftFrame = new THREE.Mesh(frameSide, trimMaterial);
+  leftFrame.position.set(x - doorWidth / 2, baseY + doorHeight / 2, z + depth / 2 - wallThickness * 0.6);
+  scene.add(leftFrame);
+  const rightFrame = leftFrame.clone();
+  rightFrame.position.x = x + doorWidth / 2;
+  scene.add(rightFrame);
+
+  const roof = new THREE.Mesh(
+    new THREE.BoxGeometry(width + 2.1, wallThickness + 0.08, depth + 1.6),
+    roofMaterial,
+  );
+  roof.position.set(x, baseY + height + 0.48, z);
+  roof.castShadow = true;
+  scene.add(roof);
+
+  const supportA = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 1.35, 10), trimMaterial);
+  supportA.position.set(x - 2.2, baseY + 0.66, z - depth / 2 - 0.45);
+  scene.add(supportA);
+  const supportB = supportA.clone();
+  supportB.position.x = x + 2.2;
+  scene.add(supportB);
+
+  const barrelGroup = new THREE.Group();
+  const barrelBody = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.38, 0.45, 0.82, 22, 1, false),
+    new THREE.MeshStandardMaterial({
+      color: 0xd5a36d,
+      roughness: 0.82,
+      metalness: 0.01,
+    }),
+  );
+  barrelBody.position.y = baseY + 0.47;
+  barrelBody.castShadow = true;
+  barrelBody.receiveShadow = true;
+  barrelGroup.add(barrelBody);
+
+  const barrelBandTop = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.48, 0.48, 0.08, 22),
+    new THREE.MeshStandardMaterial({ color: 0x5f3928, roughness: 0.4, metalness: 0.08 }),
+  );
+  barrelBandTop.position.y = baseY + 0.87;
+  barrelGroup.add(barrelBandTop);
+
+  const barrelBandMid = new THREE.Mesh(
+    new THREE.TorusGeometry(0.36, 0.05, 10, 24),
+    new THREE.MeshStandardMaterial({ color: 0x5f3928, roughness: 0.3, metalness: 0.18 }),
+  );
+  barrelBandMid.rotation.x = Math.PI / 2;
+  barrelBandMid.position.set(0, baseY + 0.47, 0);
+  barrelGroup.add(barrelBandMid);
+
+  const barrelBandBottom = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.48, 0.48, 0.08, 22),
+    new THREE.MeshStandardMaterial({ color: 0x5f3928, roughness: 0.4, metalness: 0.08 }),
+  );
+  barrelBandBottom.position.y = baseY + 0.07;
+  barrelGroup.add(barrelBandBottom);
+
+  barrelBody.userData.interactionType = "beer";
+  barrelBody.userData.interactionRadius = DRUNK_HIT_RADIUS;
+  beerInteractables.push(barrelBody);
+
+  barrelGroup.position.set(x - 1.85, baseY, z + 0.15);
+  scene.add(barrelGroup);
+
+  const signBoard = new THREE.Mesh(
+    new THREE.PlaneGeometry(6.4, 1.25),
+    new THREE.MeshStandardMaterial({
+      map: createTavernSignTexture("HOSPODA"),
+      transparent: true,
+      side: THREE.FrontSide,
+      roughness: 0.44,
+      metalness: 0.02,
+      emissive: 0x2f1d12,
+      emissiveIntensity: 0.2,
+    }),
+  );
+  signBoard.position.set(x, baseY + 4.35, z + depth / 2 + 0.08);
+  signBoard.rotation.y = 0;
+  scene.add(signBoard);
+
+  const chim = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.58, 1.35, 12), wallMaterial);
+  chim.position.set(x - 3.5, baseY + height - 0.7, z - 2);
+  scene.add(chim);
+  const chimTop = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.62, 0.24, 12), trimMaterial);
+  chimTop.position.set(x - 3.5, baseY + height + 0.3, z - 2);
+  scene.add(chimTop);
+
+  const light = new THREE.PointLight(0xfff4d8, 1.25, 36, 1.5);
+  light.position.set(x, baseY + 2.7, z + 1.75);
+  scene.add(light);
+}
+
 function createTextSprite(text, { width, height, font, color }) {
   const canvas = document.createElement("canvas");
   canvas.width = width;
@@ -505,6 +853,31 @@ function createTextSprite(text, { width, height, font, color }) {
   const sprite = new THREE.Sprite(material);
   sprite.scale.set(5.5, 1.05, 1);
   return sprite;
+}
+
+function createTavernSignTexture(text) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 800;
+  canvas.height = 320;
+  const context = canvas.getContext("2d");
+
+  context.fillStyle = "#4f260f";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = "#e8d9c2";
+  context.fillRect(8, 8, canvas.width - 16, canvas.height - 16);
+  context.strokeStyle = "#3a1a08";
+  context.lineWidth = 10;
+  context.strokeRect(10, 10, canvas.width - 20, canvas.height - 20);
+
+  context.fillStyle = "#2d1209";
+  context.font = "bold 132px Georgia";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillText(text, canvas.width / 2, canvas.height / 2);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.needsUpdate = true;
+  return texture;
 }
 
 function createBookPageTexture(lineA, lineB) {
@@ -814,6 +1187,11 @@ function createBuildingDistrict() {
         continue;
       }
 
+      if (column === 0 && row === 2) {
+        createTavern(x, z);
+        continue;
+      }
+
       if (shouldCreateLibrary(column, row)) {
         createLibrary(x, z);
         continue;
@@ -864,6 +1242,10 @@ document.addEventListener("keydown", (event) => {
   if (event.code === "Space" && isOnGround) {
     velocityY = 0.28;
     isOnGround = false;
+  }
+
+  if (event.code === "KeyE" && tryDrinkBeerFromCenter()) {
+    return;
   }
 });
 
@@ -924,12 +1306,71 @@ function tryOpenBookFromClick(event) {
   return true;
 }
 
+function tryDrinkBeerFromClick(event) {
+  if (beerInteractables.length === 0) {
+    return false;
+  }
+
+  if (document.pointerLockElement === renderer.domElement) {
+    pointer.set(0, 0);
+  } else {
+    pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
+    pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
+  }
+
+  raycaster.setFromCamera(pointer, camera);
+  const hit = raycaster.intersectObjects(beerInteractables, false)[0];
+  if (hit && isBeerWithinReach(hit.object) && hit.object.userData.interactionType === "beer") {
+    drinkFromBeer();
+    return true;
+  }
+
+  const nearby = findNearbyBeer();
+  if (!nearby) {
+    if (player.position.distanceTo(TAVERN_BARREL_FALLBACK) <= TAVERN_BARREL_FALLBACK_RADIUS) {
+      drinkFromBeer();
+      return true;
+    }
+    return false;
+  }
+
+  drinkFromBeer();
+  return true;
+}
+
+function tryDrinkBeerFromCenter() {
+  pointer.set(0, 0);
+  raycaster.setFromCamera(pointer, camera);
+  const hit = raycaster.intersectObjects(beerInteractables, false)[0];
+
+  if (hit && isBeerWithinReach(hit.object) && hit.object.userData.interactionType === "beer") {
+    drinkFromBeer();
+    return true;
+  }
+
+  const nearby = findNearbyBeer();
+  if (!nearby) {
+    if (player.position.distanceTo(TAVERN_BARREL_FALLBACK) <= TAVERN_BARREL_FALLBACK_RADIUS) {
+      drinkFromBeer();
+      return true;
+    }
+    return false;
+  }
+
+  drinkFromBeer();
+  return true;
+}
+
 document.addEventListener("mousedown", (event) => {
   if (isBookOverlayOpen()) {
     return;
   }
 
   if (event.button === 0 && tryOpenBookFromClick(event)) {
+    return;
+  }
+
+  if (event.button === 0 && tryDrinkBeerFromClick(event)) {
     return;
   }
 
@@ -1012,6 +1453,16 @@ function resolvePlayerPlatformCollisions(previousPosition) {
 // ANIMACE
 function animate() {
   requestAnimationFrame(animate);
+  const now = performance.now();
+  const deltaSeconds = Math.max(0, (now - lastFrameTime) / 1000);
+  lastFrameTime = now;
+  if (drunkLevel > 0) {
+    drunkLevel = Math.max(0, drunkLevel - DRUNK_DECAY_PER_SECOND * deltaSeconds);
+  }
+
+  if (drunkLevel >= DRUNK_DEATH_THRESHOLD) {
+    respawnFromDrunkness();
+  }
 
   player.rotation.y = angle;
   playerForward.set(-Math.sin(angle), 0, -Math.cos(angle));
@@ -1089,6 +1540,7 @@ function animate() {
     player.position.set(0, 1, 0);
     velocityY = 0;
     isOnGround = true;
+    drunkLevel = 0;
     enemy.position.set(0, 1, -50);
   }
 
@@ -1096,6 +1548,7 @@ function animate() {
     player.position.set(0, 1, 0);
     velocityY = 0;
     isOnGround = true;
+    drunkLevel = 0;
     libraryEnemy.visible = false;
     if (worldState.libraryTrigger) {
       worldState.libraryTrigger.activated = false;
@@ -1130,6 +1583,7 @@ function animate() {
     player.position.set(5, 1, 0);
     velocityY = 0;
     isOnGround = true;
+    drunkLevel = 0;
     enemy.position.set(0, 1, -50);
   }
 

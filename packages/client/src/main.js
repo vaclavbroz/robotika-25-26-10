@@ -91,6 +91,9 @@ const terrain = new THREE.Mesh(terrainGeometry, terrainMaterial);
 terrain.receiveShadow = true;
 scene.add(terrain);
 
+const tavern = createTavernAt(0, -24);
+scene.add(tavern);
+
 const skyDome = new THREE.Mesh(
   new THREE.SphereGeometry(900, 32, 16),
   new THREE.MeshBasicMaterial({
@@ -214,7 +217,9 @@ function togglePointerLock() {
   }
 }
 
-help.addEventListener("click", lockPointer);
+if (help) {
+  help.addEventListener("click", lockPointer);
+}
 if (connectButton) {
   connectButton.addEventListener("click", startConnectFromUi);
 }
@@ -1300,6 +1305,171 @@ window.addEventListener("resize", () => {
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
+
+function createTavernAt(worldX, worldZ) {
+  const root = new THREE.Group();
+  root.position.set(worldX, terrainHeight(worldX, worldZ), worldZ);
+
+  const base = new THREE.Mesh(
+    new THREE.BoxGeometry(16, 1.0, 12),
+    new THREE.MeshStandardMaterial({
+      color: 0x4e2d17,
+      roughness: 0.95,
+      metalness: 0.01,
+    }),
+  );
+  base.position.set(0, -0.5, 0);
+  base.castShadow = true;
+  base.receiveShadow = true;
+  root.add(base);
+
+  const walls = new THREE.Mesh(
+    new THREE.BoxGeometry(13, 4.6, 9),
+    new THREE.MeshStandardMaterial({
+      color: 0x7b4e2f,
+      roughness: 0.7,
+      metalness: 0.05,
+    }),
+  );
+  walls.position.set(0, 2.25, 0);
+  walls.castShadow = true;
+  walls.receiveShadow = true;
+  root.add(walls);
+
+  const roof = new THREE.Mesh(
+    new THREE.ConeGeometry(7.8, 3.2, 4),
+    new THREE.MeshStandardMaterial({
+      color: 0x8c2f2f,
+      roughness: 0.65,
+      metalness: 0.05,
+    }),
+  );
+  roof.position.set(0, 4.8, 0);
+  roof.rotation.y = Math.PI / 4;
+  roof.castShadow = true;
+  roof.receiveShadow = true;
+  root.add(roof);
+
+  const chimney = new THREE.Mesh(
+    new THREE.BoxGeometry(1, 2.1, 1),
+    new THREE.MeshStandardMaterial({
+      color: 0x5f2c22,
+      roughness: 0.7,
+      metalness: 0.1,
+    }),
+  );
+  chimney.position.set(-4.4, 4.8, -2.5);
+  chimney.castShadow = true;
+  chimney.receiveShadow = true;
+  root.add(chimney);
+
+  const chimneyCap = new THREE.Mesh(
+    new THREE.BoxGeometry(1.2, 0.25, 1.2),
+    new THREE.MeshStandardMaterial({
+      color: 0x3c3c3c,
+      roughness: 0.35,
+      metalness: 0.12,
+    }),
+  );
+  chimneyCap.position.set(-4.4, 5.95, -2.5);
+  chimneyCap.castShadow = true;
+  chimneyCap.receiveShadow = true;
+  root.add(chimneyCap);
+
+  const windowMat = new THREE.MeshStandardMaterial({
+    color: 0x9ad6ff,
+    roughness: 0.16,
+    metalness: 0.35,
+    emissive: 0x5d8fbf,
+    emissiveIntensity: 0.15,
+  });
+
+  const frontWindowLeft = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.2, 0.14), windowMat);
+  frontWindowLeft.position.set(-3.0, 2.9, 4.45);
+  root.add(frontWindowLeft);
+
+  const frontWindowRight = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.2, 0.14), windowMat);
+  frontWindowRight.position.set(3.0, 2.9, 4.45);
+  root.add(frontWindowRight);
+
+  const backWindow = new THREE.Mesh(new THREE.BoxGeometry(3.0, 1.2, 0.14), windowMat);
+  backWindow.position.set(0, 2.7, -4.45);
+  root.add(backWindow);
+
+  const door = new THREE.Mesh(
+    new THREE.BoxGeometry(1.9, 2.7, 0.2),
+    new THREE.MeshStandardMaterial({
+      color: 0x3b1c12,
+      roughness: 0.6,
+      metalness: 0.1,
+    }),
+  );
+  door.position.set(0, 1.5, 4.45);
+  door.castShadow = true;
+  root.add(door);
+
+  const sign = new THREE.Mesh(
+    new THREE.PlaneGeometry(7.1, 1.45),
+    new THREE.MeshStandardMaterial({
+      map: createTavernSignTexture(),
+      transparent: true,
+      roughness: 0.6,
+      metalness: 0.01,
+      side: THREE.DoubleSide,
+    }),
+  );
+  sign.position.set(0, 4.2, 4.6);
+  sign.castShadow = true;
+  root.add(sign);
+
+  const lightPoleLeft = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.09, 0.09, 1.1, 10),
+    new THREE.MeshStandardMaterial({ color: 0x6c4a2f, roughness: 0.5, metalness: 0.05 }),
+  );
+  lightPoleLeft.position.set(-1.8, 1.05, 4.5);
+  root.add(lightPoleLeft);
+
+  const lightPoleRight = lightPoleLeft.clone();
+  lightPoleRight.position.set(1.8, 1.05, 4.5);
+  root.add(lightPoleRight);
+
+  const glow = new THREE.PointLight(0xffd4a3, 1.0, 25, 1.7);
+  glow.position.set(0, 2.4, 4.2);
+  glow.castShadow = true;
+  root.add(glow);
+
+  return root;
+}
+
+function createTavernSignTexture() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 640;
+  canvas.height = 256;
+  const ctx = canvas.getContext("2d");
+
+  ctx.fillStyle = "#6d3a1a";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.strokeStyle = "#f5ecd0";
+  ctx.lineWidth = 18;
+  ctx.strokeRect(10, 10, canvas.width - 20, canvas.height - 20);
+
+  ctx.fillStyle = "#f7e7c1";
+  ctx.strokeStyle = "#31180d";
+  ctx.lineWidth = 4;
+  ctx.fillRect(56, 56, canvas.width - 112, canvas.height - 112);
+  ctx.strokeRect(56, 56, canvas.width - 112, canvas.height - 112);
+
+  ctx.fillStyle = "#34130a";
+  ctx.font = "bold 92px Georgia";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("HOSPODA", canvas.width / 2, canvas.height / 2);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
 
 function terrainHeight(x, z) {
   const distanceFromCenter = Math.hypot(x, z);
