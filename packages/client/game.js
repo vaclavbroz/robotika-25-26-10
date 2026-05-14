@@ -101,6 +101,10 @@ const RUIN_VISIBLE_RADIUS = 3;
 const RUIN_START_Z = -96;
 const DEAD_TREE_COUNT = 220;
 const DEAD_TREE_GROUND_Y = 28;
+const BIG_GROUND_CENTER_X = 24;
+const BIG_GROUND_WIDTH = 10000;
+const BIG_GROUND_DEPTH = 10000;
+const BIG_GROUND_FRONT_EDGE_Z = -64;
 
 let enemySpeed = 0.02;
 let cameraModeIndex = 0;
@@ -170,21 +174,38 @@ function createDryTreeScenery() {
   deadTreeGroup.clear();
 
   const treeBands = [
-    { minX: -28, maxX: -8, minZ: -168, maxZ: -56 },
-    { minX: 56, maxX: 76, minZ: -168, maxZ: -56 },
+    { minX: -28, maxX: -8, minZ: -168, maxZ: BIG_GROUND_FRONT_EDGE_Z - 2 },
+    { minX: 56, maxX: 76, minZ: -168, maxZ: BIG_GROUND_FRONT_EDGE_Z - 2 },
     { minX: -24, maxX: 72, minZ: -188, maxZ: -136 },
   ];
 
-  for (let i = 0; i < DEAD_TREE_COUNT; i += 1) {
+  let placed = 0;
+  for (let i = 0; i < DEAD_TREE_COUNT * 4 && placed < DEAD_TREE_COUNT; i += 1) {
     const band = treeBands[i % treeBands.length];
     const worldX = THREE.MathUtils.lerp(band.minX, band.maxX, Math.random());
     const worldZ = THREE.MathUtils.lerp(band.minZ, band.maxZ, Math.random());
+    if (!isOnBigGround(worldX, worldZ)) {
+      continue;
+    }
+
     const tree = createStandingDeadTree(worldX, worldZ);
     tree.position.set(worldX, DEAD_TREE_GROUND_Y, worldZ);
     deadTreeGroup.add(tree);
+    placed += 1;
   }
 
   scene.add(deadTreeGroup);
+}
+
+function isOnBigGround(worldX, worldZ) {
+  const halfWidth = BIG_GROUND_WIDTH / 2;
+  const backEdgeZ = BIG_GROUND_FRONT_EDGE_Z - BIG_GROUND_DEPTH;
+  return (
+    worldX >= BIG_GROUND_CENTER_X - halfWidth &&
+    worldX <= BIG_GROUND_CENTER_X + halfWidth &&
+    worldZ <= BIG_GROUND_FRONT_EDGE_Z &&
+    worldZ >= backEdgeZ
+  );
 }
 const beerInteractables = [];
 const DRINK_PLUS_PER_DRINK = 5;
@@ -1279,18 +1300,15 @@ function createBuildingDistrict() {
 }
 
 // velká zem
-  const INFINITE_VILLAGE_GROUND_WIDTH = 10000;
-  const INFINITE_VILLAGE_GROUND_DEPTH = 10000;
-  const villageGroundFrontEdgeZ = -64;
   const bigGroundGeometry = new THREE.BoxGeometry(
-    INFINITE_VILLAGE_GROUND_WIDTH,
+    BIG_GROUND_WIDTH,
     2,
-    INFINITE_VILLAGE_GROUND_DEPTH,
+    BIG_GROUND_DEPTH,
   );
   const bigGroundMaterial = new THREE.MeshStandardMaterial({ color: 0x222222 });
 
   const bigGround = new THREE.Mesh(bigGroundGeometry, bigGroundMaterial);
-  bigGround.position.set(24, 27, villageGroundFrontEdgeZ - INFINITE_VILLAGE_GROUND_DEPTH / 2);
+  bigGround.position.set(BIG_GROUND_CENTER_X, 27, BIG_GROUND_FRONT_EDGE_Z - BIG_GROUND_DEPTH / 2);
   scene.add(bigGround);
 
   const villageApproachGeometry = new THREE.BoxGeometry(36, 2, 14);
