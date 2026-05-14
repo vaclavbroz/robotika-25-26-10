@@ -99,6 +99,8 @@ const playerHalfSize = 0.5;
 const RUIN_SECTOR_SIZE = 24;
 const RUIN_VISIBLE_RADIUS = 3;
 const RUIN_START_Z = -96;
+const DEAD_TREE_COUNT = 220;
+const DEAD_TREE_GROUND_Y = 28;
 
 let enemySpeed = 0.02;
 let cameraModeIndex = 0;
@@ -110,6 +112,80 @@ const worldState = {
   ruinSectors: new Map(),
   libraryTrigger: null,
 };
+
+const deadTreeGroup = new THREE.Group();
+scene.add(deadTreeGroup);
+
+function createStandingDeadTree(worldX, worldZ) {
+  const tree = new THREE.Group();
+  const trunkHeight = 8 + Math.random() * 4;
+  const topHeight = 2.4 + Math.random() * 1.6;
+  const topRadius = 2.4 + Math.random() * 1.5;
+  const tilt = (Math.random() - 0.5) * 0.18;
+
+  const trunk = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.34, 0.58, trunkHeight, 9),
+    new THREE.MeshStandardMaterial({ color: 0x443321, roughness: 0.95, metalness: 0.02 }),
+  );
+  trunk.position.y = trunkHeight / 2;
+  trunk.castShadow = true;
+  tree.add(trunk);
+
+  const top = new THREE.Mesh(
+    new THREE.ConeGeometry(topRadius, topHeight, 4),
+    new THREE.MeshStandardMaterial({ color: 0x4d3b2a, roughness: 0.94, metalness: 0.02 }),
+  );
+  top.position.y = trunkHeight * 0.72;
+  top.rotation.z = tilt * 0.7;
+  top.rotation.x = tilt * 0.7;
+  top.castShadow = true;
+  tree.add(top);
+
+  for (let i = 0; i < 2 + Math.floor(Math.random() * 3); i += 1) {
+    const branch = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.05, 0.08, 1.45, 5),
+      new THREE.MeshStandardMaterial({ color: 0x3e2f20, roughness: 0.96, metalness: 0.02 }),
+    );
+    const branchAngle = (Math.PI * 2 * i) / 3;
+    branch.position.set(
+      Math.cos(branchAngle) * 0.6,
+      trunkHeight * (0.35 + Math.random() * 0.5),
+      Math.sin(branchAngle) * 0.6,
+    );
+    branch.rotation.z = Math.PI / 2;
+    branch.rotation.y = branchAngle + Math.random() * 1.2;
+    branch.castShadow = true;
+    tree.add(branch);
+  }
+
+  tree.rotation.z = tilt;
+  tree.scale.setScalar(1.2 + Math.random() * 0.9);
+  tree.userData.colliderRadius = 0.58 * tree.scale.x;
+  tree.userData.colliderHeight = trunkHeight * tree.scale.y;
+
+  return tree;
+}
+
+function createDryTreeScenery() {
+  deadTreeGroup.clear();
+
+  const treeBands = [
+    { minX: -28, maxX: -8, minZ: -168, maxZ: -56 },
+    { minX: 56, maxX: 76, minZ: -168, maxZ: -56 },
+    { minX: -24, maxX: 72, minZ: -188, maxZ: -136 },
+  ];
+
+  for (let i = 0; i < DEAD_TREE_COUNT; i += 1) {
+    const band = treeBands[i % treeBands.length];
+    const worldX = THREE.MathUtils.lerp(band.minX, band.maxX, Math.random());
+    const worldZ = THREE.MathUtils.lerp(band.minZ, band.maxZ, Math.random());
+    const tree = createStandingDeadTree(worldX, worldZ);
+    tree.position.set(worldX, DEAD_TREE_GROUND_Y, worldZ);
+    deadTreeGroup.add(tree);
+  }
+
+  scene.add(deadTreeGroup);
+}
 const beerInteractables = [];
 const DRINK_PLUS_PER_DRINK = 5;
 const DRUNK_GAIN_PER_DRINK = 1.25;
@@ -1203,9 +1279,14 @@ function createBuildingDistrict() {
 }
 
 // velká zem
+  const INFINITE_VILLAGE_GROUND_WIDTH = 10000;
   const INFINITE_VILLAGE_GROUND_DEPTH = 10000;
   const villageGroundFrontEdgeZ = -64;
-  const bigGroundGeometry = new THREE.BoxGeometry(84, 2, INFINITE_VILLAGE_GROUND_DEPTH);
+  const bigGroundGeometry = new THREE.BoxGeometry(
+    INFINITE_VILLAGE_GROUND_WIDTH,
+    2,
+    INFINITE_VILLAGE_GROUND_DEPTH,
+  );
   const bigGroundMaterial = new THREE.MeshStandardMaterial({ color: 0x222222 });
 
   const bigGround = new THREE.Mesh(bigGroundGeometry, bigGroundMaterial);
@@ -1450,6 +1531,41 @@ function resolvePlayerPlatformCollisions(previousPosition) {
   }
 }
 
+function resolvePlayerTreeCollisions() {
+  const playerBottom = player.position.y - playerHalfSize;
+  const playerTop = player.position.y + playerHalfSize;
+
+  for (const tree of deadTreeGroup.children) {
+    const trunkBottom = tree.position.y;
+    const trunkTop = trunkBottom + (tree.userData.colliderHeight ?? 0);
+
+    if (playerTop <= trunkBottom || playerBottom >= trunkTop) {
+      continue;
+    }
+
+    const dx = player.position.x - tree.position.x;
+    const dz = player.position.z - tree.position.z;
+    const distance = Math.hypot(dx, dz);
+    const minDistance = playerHalfSize + (tree.userData.colliderRadius ?? 0);
+
+    if (distance >= minDistance) {
+      continue;
+    }
+
+    const pushDistance = minDistance - distance;
+    if (distance > 0.0001) {
+      player.position.x += (dx / distance) * pushDistance;
+      player.position.z += (dz / distance) * pushDistance;
+    } else {
+      player.position.x += Math.cos(angle) * pushDistance;
+      player.position.z += Math.sin(angle) * pushDistance;
+    }
+
+    speedX = 0;
+    speedZ = 0;
+  }
+}
+
 // ANIMACE
 function animate() {
   requestAnimationFrame(animate);
@@ -1575,6 +1691,7 @@ function animate() {
 
   // KOLIZE S PLOŠINAMI
   resolvePlayerPlatformCollisions(previousPosition);
+  resolvePlayerTreeCollisions();
   updateInfiniteRuins();
 
   // ZEM
@@ -1642,6 +1759,7 @@ createPlatform(-4, 24, -60, 6, 0.5, 4);
 createPlatform(-2, 26, -65, 4, 0.5, 4);
 createPlatform(2, 28, -70, 4, 0.5, 4);
 createBuildingDistrict();
+createDryTreeScenery();
 updateInfiniteRuins();
 
 animate();

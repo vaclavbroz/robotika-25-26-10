@@ -9,6 +9,11 @@ const PARACHUTE_CANOPY_Y = 2.9;
 const GROUND_CONTACT_VISUAL_BIAS = 0.03;
 const LABEL_PIXELS_TO_WORLD_X = 1.9 / 384;
 const LABEL_PIXELS_TO_WORLD_Y = 0.48 / 96;
+const DEAD_TREE_COUNT = 140;
+const DEAD_TREE_VILLAGE_X = 0;
+const DEAD_TREE_VILLAGE_Z = -24;
+const DEAD_TREE_MIN_DISTANCE_FROM_VILLAGE = 68;
+const DEAD_TREE_MAX_RADIUS = 210;
 const AVATAR_PATTERNS = new Set(["stripes", "checker"]);
 const DEFAULT_AVATAR_COLOR = "#3c74d4";
 const DEFAULT_AVATAR_PATTERN = "stripes";
@@ -91,8 +96,9 @@ const terrain = new THREE.Mesh(terrainGeometry, terrainMaterial);
 terrain.receiveShadow = true;
 scene.add(terrain);
 
-const tavern = createTavernAt(0, -24);
+const tavern = createTavernAt(DEAD_TREE_VILLAGE_X, DEAD_TREE_VILLAGE_Z);
 scene.add(tavern);
+scene.add(createDryTreeScenery());
 
 const skyDome = new THREE.Mesh(
   new THREE.SphereGeometry(900, 32, 16),
@@ -1298,6 +1304,92 @@ function updateNetDebug() {
     `statesRecv=${net.recvStates}`,
     `stateAgeMs=${stateAgeMs}`,
   );
+}
+
+function createDryTreeScenery() {
+  const group = new THREE.Group();
+  const trunkMaterial = new THREE.MeshStandardMaterial({
+    color: 0x4a3a29,
+    roughness: 0.97,
+    metalness: 0.03,
+  });
+  const branchMaterial = new THREE.MeshStandardMaterial({
+    color: 0x6f5e4f,
+    roughness: 0.96,
+    metalness: 0.04,
+  });
+
+  let placed = 0;
+  for (let i = 0; i < DEAD_TREE_COUNT * 20 && placed < DEAD_TREE_COUNT; i += 1) {
+    const radius = DEAD_TREE_MIN_DISTANCE_FROM_VILLAGE
+      + Math.sqrt(rand2(i, 2.11)) * (DEAD_TREE_MAX_RADIUS - DEAD_TREE_MIN_DISTANCE_FROM_VILLAGE);
+    const angle = rand2(i, 9.13) * Math.PI * 2;
+    const worldX = Math.cos(angle) * radius + DEAD_TREE_VILLAGE_X;
+    const worldZ = Math.sin(angle) * radius + DEAD_TREE_VILLAGE_Z;
+    const y = terrainHeight(worldX, worldZ);
+
+    if (y < -4) {
+      continue;
+    }
+    if (Math.hypot(worldX - DEAD_TREE_VILLAGE_X, worldZ - DEAD_TREE_VILLAGE_Z) < DEAD_TREE_MIN_DISTANCE_FROM_VILLAGE) {
+      continue;
+    }
+
+    const tree = new THREE.Group();
+    const scale = 1.85 + rand2(i, 11.4) * 1.8;
+    const trunkHeight = 5.2 + rand2(i, 44.1) * 4.4;
+    const topHeight = 2.2 + rand2(i, 55.2) * 1.8;
+
+    tree.position.set(worldX, y, worldZ);
+    tree.rotation.x = (rand2(i, 17.3) - 0.5) * 0.45;
+    tree.rotation.z = (rand2(i, 22.7) - 0.5) * 0.45;
+    tree.rotation.y = rand2(i, 9.9) * Math.PI * 2;
+    tree.scale.setScalar(scale);
+
+    const trunk = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.12, 0.18, trunkHeight, 8),
+      trunkMaterial,
+    );
+    trunk.position.y = trunkHeight / 2;
+    trunk.castShadow = true;
+    tree.add(trunk);
+
+    const top = new THREE.Mesh(
+      new THREE.ConeGeometry(0.9, topHeight, 4),
+      branchMaterial,
+    );
+    top.position.set(
+      (rand2(i, 6.1) - 0.5) * 0.25,
+      trunkHeight * 0.72,
+      (rand2(i, 6.6) - 0.5) * 0.25,
+    );
+    top.rotation.x = (rand2(i, 7.9) - 0.5) * 0.8;
+    top.rotation.z = (rand2(i, 8.6) - 0.5) * 0.8;
+    top.castShadow = true;
+    tree.add(top);
+
+    const branchGeometry = new THREE.CylinderGeometry(0.024, 0.03, 0.6, 4);
+    const branchCount = 2 + Math.floor(rand2(i, 91.7) * 2);
+    for (let b = 0; b < branchCount; b += 1) {
+      const branch = new THREE.Mesh(branchGeometry, branchMaterial);
+      const branchAngle = (b / branchCount) * Math.PI * 2 + rand2(i, b * 13.7) * 0.65;
+      branch.position.set(
+        Math.cos(branchAngle) * 0.4,
+        trunkHeight * (0.45 + rand2(i, b * 4.7) * 0.45),
+        Math.sin(branchAngle) * 0.4,
+      );
+      branch.rotation.x = (rand2(i, b * 1.3) - 0.5) * 0.5;
+      branch.rotation.z = Math.PI / 2 + (rand2(i, b * 1.7) - 0.5) * 0.4;
+      branch.rotation.y = branchAngle;
+      branch.castShadow = true;
+      tree.add(branch);
+    }
+
+    group.add(tree);
+    placed += 1;
+  }
+
+  return group;
 }
 
 window.addEventListener("resize", () => {
